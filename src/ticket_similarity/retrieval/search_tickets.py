@@ -45,7 +45,8 @@ def search_similar_tickets(
         payload = point.payload or {}
         output.append(
             {
-                "score": point.score,
+                "similarity_score": point.score,
+                "score": point.score,  # keeping for compatibility with current code
                 "ticket_id": payload.get("ticket_id"),
                 "state": payload.get("state"),
                 "area": payload.get("area"),
@@ -81,3 +82,4 @@ if __name__ == "__main__":
         print(f"Operation: {r['operation_name']}")
         print(f"API: {r['api']}")
         print(f"Base Text:\n{str(r['base_text'])[:500]}")
+        print(f"Similarity Score: {r['similarity_score']:.4f}")
