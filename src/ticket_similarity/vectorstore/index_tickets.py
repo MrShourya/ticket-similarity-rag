@@ -1,8 +1,8 @@
 import pandas as pd
 from qdrant_client.models import PointStruct
 
-from embeddings.embeddings import EmbeddingService
-from vectorstore.qdrant_store import (
+from ticket_similarity.embeddings.embeddings import EmbeddingService
+from ticket_similarity.vectorstore.qdrant_store import (
     COLLECTION_NAME,
     get_qdrant_client,
     recreate_collection,

@@ -1,7 +1,7 @@
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 
-from embeddings.embeddings import EmbeddingService
-from vectorstore.qdrant_store import COLLECTION_NAME, get_qdrant_client
+from ticket_similarity.embeddings.embeddings import EmbeddingService
+from ticket_similarity.vectorstore.qdrant_store import COLLECTION_NAME, get_qdrant_client
 
 
 def build_filter(area: str | None = None, sub_area: str | None = None):
@@ -45,7 +45,8 @@ def search_similar_tickets(
         payload = point.payload or {}
         output.append(
             {
-                "score": point.score,
+                "similarity_score": point.score,
+                "score": point.score,  # keeping for compatibility with current code
                 "ticket_id": payload.get("ticket_id"),
                 "state": payload.get("state"),
                 "area": payload.get("area"),
@@ -81,3 +82,4 @@ if __name__ == "__main__":
         print(f"Operation: {r['operation_name']}")
         print(f"API: {r['api']}")
         print(f"Base Text:\n{str(r['base_text'])[:500]}")
+        print(f"Similarity Score: {r['similarity_score']:.4f}")

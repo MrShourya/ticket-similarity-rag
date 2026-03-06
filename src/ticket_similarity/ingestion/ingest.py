@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from config.settings import ColumnMap, IngestConfig
-from ingestion.normalize import normalize_text
-from ingestion.normalize_lite import normalize_lite
-from ingestion.pii import mask_pii, sanitize_endpoints_text
+from ticket_similarity.config.settings import ColumnMap, IngestConfig
+from ticket_similarity.ingestion.normalize import normalize_text
+from ticket_similarity.ingestion.normalize_lite import normalize_lite
+from ticket_similarity.ingestion.pii import mask_pii, sanitize_endpoints_text
 
 
 def _limit_text(text: str, max_chars: int) -> str:
