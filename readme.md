@@ -1,446 +1,512 @@
-# Ticket Similarity RAG (POC)
 
-A local Python-based POC to find **similar ServiceNow tickets** using:
+# Ticket Similarity RAG (Local POC)
 
-- **multilingual embeddings**
-- **Qdrant** as the vector database
-- structured ticket preprocessing
-- metadata filtering by fields like **Area** and **Sub Area**
+A local Retrieval-Augmented Generation (RAG) proof-of-concept that helps triage ServiceNow tickets by:
 
-The goal is to help support teams quickly find historically similar incidents and identify recurring patterns such as common APIs or operations.
-
----
-
-## Current Status
-
-Implemented so far:
-
-- Excel ingestion from ServiceNow extract
-- column header normalization
-- safe text normalization
-- high-precision PII masking
-- API / Operation endpoint sanitization
-- generation of:
-  - `base_text`
-  - `enrichment_text`
-  - `embedding_text`
-- export to cleaned CSV
-- local Qdrant setup with Docker
-- embeddings generation
-- vector indexing into Qdrant
-- similarity search with optional metadata filtering
+- Finding similar historical tickets
+- Predicting the most likely Area / SubArea
+- Allowing user confirmation via CLI
+- Retrieving final similar tickets filtered by the confirmed pair
+- Running entirely locally with Qdrant + embeddings
 
 ---
 
-## Project Structure
+# Architecture
 
-```text
-ticket-similarity-rag/
-├── data/
+User Ticket
+↓
+Text Preprocessing
+↓
+Embedding Generation
+↓
+Vector Search (Qdrant)
+↓
+Area / SubArea Inference
+↓
+Candidate Pair Ranking
+↓
+User Confirmation (CLI)
+↓
+Filtered Similar Ticket Retrieval
+
+---
+
+# Key Features
+
+## Ticket Similarity Search
+
+Finds the most similar historical tickets using embeddings.
+
+Fields used:
+
+- Short Description
+- Description
+- API
+- Operation
+- Request (snippet)
+- Response (snippet)
+
+Output includes:
+
+similarity_score
+
+---
+
+## Area / SubArea Prediction
+
+The system predicts the most likely Area/SubArea using weighted similarity voting.
+
+Example:
+
+Predicted Area: ADDC (confidence 0.74)
+
+Predicted SubArea: Water and Electricity Bill Payment (confidence 0.69)
+
+---
+
+## Candidate Pair Ranking
+
+Top 3 candidate pairs are produced:
+
+1. ADDC → Water and Electricity Bill Payment
+2. ADDC → New Connection
+3. DPM → Issue a Site Plan
+
+Each pair contains:
+
+- similarity support score
+- input alignment boost
+- final confidence
+
+---
+
+## Confidence Boosting
+
+If the user already provides Area/SubArea the system boosts confidence.
+
+Boost rules:
+
+Area match → +0.10
+
+Area + SubArea match → +0.25
+
+---
+
+# CLI Guided Triage
+
+Workflow:
+
+1. Enter ticket details OR select demo case
+2. System predicts candidate Area/SubArea pairs
+3. User selects best pair
+4. System retrieves similar tickets filtered by the selected pair
+
+---
+
+# Demo Scenarios
+
+## Demo 1 — ADDC Payment Issue
+
+Area: ADDC
+SubArea: Water and Electricity Bill Payment
+
+Short Description:
+Payment Issue
+
+Description:
+My credit card ending 1234 was debited on 20Feb2026 for 1,333.62. But bills not cleared in application.
+
+---
+
+## Demo 2 — DPM Site Plan Issue
+
+Area: DPM
+SubArea: Issue a Site Plan
+
+Short Description:
+Site Plan Payment Redirection Issue
+
+Description:
+Payment summary page is shown for issuing a site plan, but the system does not redirect to the payment page.
+
+---
+
+## Demo 3 — Unknown Area Example
+
+Short Description:
+User cannot proceed with subsidy request
+
+Description:
+User is unable to proceed after selecting fodder details.
+
+---
+
+# Project Structure
+
+ticket-similarity-rag
+│
+├── data
 │   └── tickets.xlsx
-├── extract/
-│   ├── cleaned_tickets.csv
-│   └── data_quality_report.json
-├── src/
-│   ├── config/
-│   │   ├── __init__.py
-│   │   └── settings.py
-│   ├── ingestion/
-│   │   ├── __init__.py
-│   │   ├── ingest.py
-│   │   ├── normalize.py
-│   │   ├── normalize_lite.py
-│   │   ├── pii.py
-│   │   └── run_ingestion.py
-│   ├── embeddings/
-│   │   ├── __init__.py
-│   │   └── embeddings.py
-│   ├── vectorstore/
-│   │   ├── __init__.py
-│   │   ├── qdrant_store.py
-│   │   └── index_tickets.py
-│   ├── retrieval/
-│   │   ├── __init__.py
-│   │   └── search_tickets.py
-│   ├── api/
-│   │   └── __init__.py
-│   └── evaluation/
-│       └── __init__.py
-├── tests/
-├── docker-compose.yml
-├── pyproject.toml
-├── poetry.lock
-├── .gitignore
-└── README.md
+│
+├── extract
+│   └── cleaned_tickets.csv
+│
+├── src
+│   └── ticket_similarity
+│       ├── cli
+│       │   ├── triage_cli.py
+│       │   └── demo_inputs.py
+│       │
+│       ├── config
+│       │
+│       ├── ingestion
+│       │   ├── ingest.py
+│       │   ├── normalize.py
+│       │   ├── normalize_lite.py
+│       │   └── pii.py
+│       │
+│       ├── embeddings
+│       │   └── embeddings.py
+│       │
+│       ├── vectorstore
+│       │   ├── qdrant_store.py
+│       │   └── index_tickets.py
+│       │
+│       └── retrieval
+│           ├── search_tickets.py
+│           ├── pipeline.py
+│           ├── area_inference.py
+│           ├── subarea_inference.py
+│           ├── pair_inference.py
+│           └── confidence.py
+
+---
+
+# Installation
+
+Requirements:
+
+Python 3.11
+Poetry
+Docker
+
+---
+
+Clone repo:
+
+git clone https://github.com/MrShourya/ticket-similarity-rag.git
+
+cd ticket-similarity-rag
+
+---
+
+Install dependencies:
+
+poetry install
+
+---
+
+Start Qdrant:
+
+docker compose up -d
+
+Dashboard:
+
+http://localhost:6333/dashboard
+
+---
+
+# Data Preparation
+
+Place your ticket extract in:
+
+data/tickets.xlsx
+
+---
+
+# Ingestion
+
+poetry run python -m ticket_similarity.ingestion.run_ingestion
+
+Output:
+
+extract/cleaned_tickets.csv
+
+---
+
+# Index Tickets
+
+poetry run python -m ticket_similarity.vectorstore.index_tickets
+
+---
+
+# Run CLI Triage
+
+poetry run python -m ticket_similarity.cli.triage_cli
+
+---
+
+# Similar Ticket Output Example
+
+[1] Ticket ID: CD0374901
+Similarity Score: 0.91
+Area: ADDC
+SubArea: Water and Electricity Bill Payment
+
+---
+
+# Security
+
+The system includes:
+
+PII masking
+Endpoint sanitization
+Local embeddings
+No external ticket data transfer
+
+---
+
+# Future Enhancements
+
+Cross‑encoder reranker
+
+API clustering
+
+Langfuse observability
+
+FastAPI endpoint
+
+Web / chatbot UI
+
+Evaluation metrics
+
+---
+
+# License
+
+Local POC for ticket triage experimentation.
+
+
+---
+
+# Detailed Retrieval Pipeline
+
+The system does **not rely on a single vector search**. Instead it uses a multi‑stage retrieval pipeline.
+
+1. **Global Retrieval**
+   - Query built from:
+     - Short Description
+     - Description
+   - Vector search runs across **all tickets**
+
+2. **Area Inference**
+   - Top results are analyzed
+   - Areas are ranked using **weighted similarity scores**
+
+3. **SubArea Inference**
+   - SubAreas are predicted **only inside the predicted Area**
+   - Prevents invalid Area/SubArea combinations
+
+4. **Candidate Pair Ranking**
+   - Top 3 `(Area, SubArea)` pairs generated
+   - Each pair contains:
+     - support score
+     - alignment boost
+     - final confidence
+
+5. **User Confirmation**
+   - CLI presents top pairs
+   - User confirms or corrects the classification
+
+6. **Filtered Retrieval**
+   - Final vector search runs with filters:
+
+```
+area = selected_area
+sub_area = selected_sub_area
+```
+
+This significantly improves relevance of similar tickets.
+
+---
+
+# Text Processing Pipeline
+
+Before indexing tickets, the system performs preprocessing.
+
+### Normalization
+
+Removes noisy formatting:
+
+- extra whitespace
+- broken line breaks
+- malformed characters
+
+### PII Masking
+
+Sensitive values are masked:
+
+- phone numbers
+- emails
+- Emirates IDs
+- IP addresses
+- credit card numbers
+
+Example:
+
+```
+credit card ending 1234
+```
+
+remains readable while protecting sensitive data.
+
+### Endpoint Sanitization
+
+API and operation endpoints are normalized.
+
+Example:
+
+```
+/gateway/service/paymentDoPayment?args=XYZ
+```
+
+becomes
+
+```
+/gateway/service/paymentDoPayment
 ```
 
 ---
 
-## Architecture Overview
+# Embedding Strategy
 
-```text
-Excel Tickets
-    ↓
-Ingestion + Cleaning
-    ↓
-PII Masking + Endpoint Sanitization
-    ↓
-base_text / enrichment_text / embedding_text
-    ↓
-Embedding Model
-    ↓
-Qdrant Vector DB
-    ↓
-Similarity Search
-    ↓
-Top Similar Tickets
-```
+Each ticket is converted into an **embedding text representation**.
 
-### Text fields used
-
-#### `base_text`
-Core ticket meaning only:
+Embedding text contains:
 
 - Area
 - SubArea
 - Short Description
 - Description
-
-#### `enrichment_text`
-Extra L2 / technical context only:
-
 - Operation
 - API
-- Response
-- Request
+- Request snippet
+- Response snippet
 
-#### `embedding_text`
-Compact retrieval text used for embeddings:
-
-- full `base_text`
-- `operation`
-- `api`
-- request snippet
-- response snippet
-
-This avoids duplicating the entire enrichment payload while keeping important similarity signals.
+Large payloads are truncated to maintain performance.
 
 ---
 
-## Input Data
+# Vector Database
 
-Place your Excel file here:
+The system uses **Qdrant** as the vector database.
 
-```text
-data/tickets.xlsx
+Each stored record contains:
+
+### Vector
+
+Embedding of ticket content.
+
+### Payload
+
+Metadata fields:
+
+```
+ticket_id
+area
+sub_area
+operation_name
+api
+base_text
+request
+response
 ```
 
-Expected columns:
-
-### Required
-- Number
-- Short Description
-- Description
-- Area
-- Sub Area
-
-### Optional
-- State
-- Created
-- Parent Case
-- Request
-- Response
-- API Name
-- Operation Name
-- Timestamp
-
-Column names are normalized automatically, so headers with extra spaces or quotes are handled safely.
+Payload fields allow filtering during retrieval.
 
 ---
 
-## Local Installation
+# Running the Retrieval Pipeline (Developer Mode)
 
-### 1. Install prerequisites
+You can run the retrieval pipeline directly for testing.
 
-- Python **3.11**
-- Poetry
-- Docker Desktop
-
-Check versions:
-
-```bash
-python3.11 --version
-poetry --version
-docker --version
 ```
+poetry run python -m ticket_similarity.retrieval.pipeline
+```
+
+This will:
+
+1. run global similarity search
+2. infer Area/SubArea
+3. show candidate pairs
+4. perform final filtered retrieval
+
+Useful for debugging retrieval behaviour.
 
 ---
 
-### 2. Clone the project
+# CLI Demo Mode
 
-```bash
-git clone https://github.com/MrShourya/ticket-similarity-rag.git
-cd ticket-similarity-rag
+Run the CLI:
+
 ```
+poetry run python -m ticket_similarity.cli.triage_cli
+```
+
+The CLI supports **demo inputs**.
+
+You can choose:
+
+```
+0 → manual input
+1 → ADDC payment issue
+2 → DPM site plan issue
+3 → unknown area example
+```
+
+This allows easy demonstrations without typing ticket details.
 
 ---
 
-### 3. Install Python dependencies
+# Example CLI Session
 
-```bash
-poetry install
+Example interaction:
+
+```
+Select demo (0/1/2/3)
 ```
 
-If you are using the `src/` layout with application-style modules, run commands with:
+Then:
 
-```bash
-PYTHONPATH=src
+```
+Top predicted Area/SubArea pairs
 ```
 
----
+User selects a pair:
 
-### 4. Start Qdrant locally
-
-```bash
-docker compose up -d
+```
+1 → ADDC / Water and Electricity Bill Payment
 ```
 
-Verify:
+System returns:
 
-```bash
-curl http://localhost:6333/healthz
 ```
-
-Expected response:
-
-```json
-{"status":"ok"}
-```
-
-Optional dashboard:
-
-```text
-http://localhost:6333/dashboard
+Final Similar Tickets
 ```
 
 ---
 
-## Running the Project Locally
+# Security & Data Handling
 
-### Step 1 — Put your Excel file in `data/`
+The system runs **fully locally**.
 
-```text
-data/tickets.xlsx
-```
+No ticket data is sent to external services.
 
----
+Security measures:
 
-### Step 2 — Run ingestion
-
-This reads the Excel file, cleans the text, masks PII, sanitizes API fields, and generates the cleaned dataset.
-
-```bash
-PYTHONPATH=src poetry run python -m ingestion.run_ingestion
-```
-
-Outputs:
-
-```text
-extract/cleaned_tickets.csv
-extract/data_quality_report.json
-```
+- PII masking
+- endpoint sanitization
+- local embedding models
+- local vector database
 
 ---
-
-### Step 3 — Index tickets into Qdrant
-
-This generates embeddings from `embedding_text` and stores vectors + metadata payload into Qdrant.
-
-```bash
-PYTHONPATH=src poetry run python -m vectorstore.index_tickets
-```
-
----
-
-### Step 4 — Run similarity search
-
-```bash
-PYTHONPATH=src poetry run python -m retrieval.search_tickets
-```
-
-This runs a sample query and returns top matching tickets.
-
----
-
-## What Gets Stored in Qdrant
-
-Each indexed ticket is stored as:
-
-- **vector** → embedding of `embedding_text`
-- **payload** → metadata fields
-
-### Stored payload example
-
-```json
-{
-  "ticket_id": "CD0374901",
-  "state": "Resolved",
-  "area": "ADDC",
-  "sub_area": "Water and Electricity Bill Payment",
-  "operation_name": "/paymentDoPayment",
-  "api": "/gateway/SMARTHUB_API_SERVICES/1.0/requestSitePlan/paymentDoPayment",
-  "base_text": "...",
-  "enrichment_text": "...",
-  "embedding_text": "..."
-}
-```
-
----
-
-## Search Behavior
-
-Current search flow:
-
-1. Convert user query into an embedding
-2. Search nearest vectors in Qdrant
-3. Apply optional metadata filters:
-   - `area`
-   - `sub_area`
-4. Return top matching tickets
-
----
-
-## Preprocessing Rules
-
-### Safe text normalization
-- trims whitespace
-- normalizes newlines
-- removes invisible unicode characters
-- lightly normalizes punctuation
-
-### High-precision PII masking
-Only masks strong-confidence PII such as:
-
-- email addresses
-- phone numbers
-- Emirates ID
-- IP addresses
-- `eID=` query parameter values
-
-Intentionally **not masked**:
-
-- application IDs
-- case numbers
-- invoice/reference numbers
-- amounts
-- dates
-
-This preserves retrieval quality.
-
-### Endpoint sanitization
-For API and Operation fields:
-
-- removes query strings
-- keeps useful endpoint paths
-- preserves multi-line API/operation content
-
----
-
-## Example Commands
-
-### Ingestion
-```bash
-PYTHONPATH=src poetry run python -m ingestion.run_ingestion
-```
-
-### Indexing
-```bash
-PYTHONPATH=src poetry run python -m vectorstore.index_tickets
-```
-
-### Search
-```bash
-PYTHONPATH=src poetry run python -m retrieval.search_tickets
-```
-
----
-
-## Development Notes
-
-### Current embedding model
-Current local model:
-
-```text
-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-```
-
-This was chosen because it:
-
-- supports Arabic + English
-- runs locally
-- is lighter than larger multilingual models like `BAAI/bge-m3`
-
-### Why not use full raw payloads directly?
-Large request/response payloads can:
-
-- waste memory
-- reduce embedding quality
-- slow down indexing
-
-So the pipeline keeps compact snippets for embedding, while preserving fuller text in payload fields.
-
----
-
-## Git Notes
-
-Recommended `.gitignore` should exclude:
-
-- `data/`
-- `extract/`
-- `.venv/`
-- local model caches
-- local Qdrant storage
-
-Do **not** push customer data or processed ticket extracts to GitHub.
-
----
-
-## Next Planned Enhancements
-
-- retrieval pipeline module
-- reranker using a cross-encoder
-- enrichment-aware clustering / bubbling
-- FastAPI endpoint
-- evaluation dataset and metrics
-- optional LangChain integration
-- optional local translation support for analyst workflows
-
----
-
-## Troubleshooting
-
-### `ModuleNotFoundError`
-Use:
-
-```bash
-PYTHONPATH=src poetry run python -m ingestion.run_ingestion
-```
-
-instead of running Python files directly by path.
-
-### Qdrant not reachable
-Make sure Docker Desktop is running and Qdrant is up:
-
-```bash
-docker compose up -d
-curl http://localhost:6333/healthz
-```
-
-### Search or indexing model download warning
-A Hugging Face download warning only means the model is being downloaded without authentication. It does **not** upload your ticket data anywhere. Embeddings are generated locally after the model is downloaded.
-
----
-
-## License / Usage
-
-This project is currently a personal POC intended for local experimentation and client-facing demonstrations.
