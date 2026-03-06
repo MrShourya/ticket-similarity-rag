@@ -1,5 +1,5 @@
-from config.settings import ColumnMap, IngestConfig
-from ingestion.ingest import ingest_excel, export_results
+from ticket_similarity.config.settings import ColumnMap, IngestConfig
+from ticket_similarity.ingestion.ingest import ingest_excel, export_results
 
 
 def main():

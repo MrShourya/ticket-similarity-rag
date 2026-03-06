@@ -1,7 +1,7 @@
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 
-from embeddings.embeddings import EmbeddingService
-from vectorstore.qdrant_store import COLLECTION_NAME, get_qdrant_client
+from ticket_similarity.embeddings.embeddings import EmbeddingService
+from ticket_similarity.vectorstore.qdrant_store import COLLECTION_NAME, get_qdrant_client
 
 
 def build_filter(area: str | None = None, sub_area: str | None = None):
