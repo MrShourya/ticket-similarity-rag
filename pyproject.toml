@@ -15,7 +15,9 @@ dependencies = [
   "regex>=2024.0.0,<2027.0.0",
   "pydantic>=2.6.0,<3.0.0",
   "qdrant-client (>=1.17.0,<2.0.0)",
-  "sentence-transformers (>=5.2.3,<6.0.0)"
+  "sentence-transformers (>=5.2.3,<6.0.0)",
+  "torch (>=2.10.0,<3.0.0)",
+  "transformers (>=5.3.0,<6.0.0)"
 ]
 
 [build-system]
