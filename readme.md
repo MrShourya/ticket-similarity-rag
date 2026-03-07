@@ -142,43 +142,33 @@ User is unable to proceed after selecting fodder details.
 ---
 
 # Project Structure
-
-ticket-similarity-rag
-│
-├── data
-│   └── tickets.xlsx
-│
-├── extract
-│   └── cleaned_tickets.csv
-│
-├── src
-│   └── ticket_similarity
-│       ├── cli
-│       │   ├── triage_cli.py
-│       │   └── demo_inputs.py
-│       │
-│       ├── config
-│       │
-│       ├── ingestion
-│       │   ├── ingest.py
-│       │   ├── normalize.py
-│       │   ├── normalize_lite.py
-│       │   └── pii.py
-│       │
-│       ├── embeddings
-│       │   └── embeddings.py
-│       │
-│       ├── vectorstore
-│       │   ├── qdrant_store.py
-│       │   └── index_tickets.py
-│       │
-│       └── retrieval
-│           ├── search_tickets.py
-│           ├── pipeline.py
-│           ├── area_inference.py
-│           ├── subarea_inference.py
-│           ├── pair_inference.py
-│           └── confidence.py
+src/
+└── ticket_similarity
+    ├── app
+    │   ├── __init__.py
+    │   └── streamlit_app.py
+    ├── cli
+    │   ├── triage_cli.py
+    │   └── demo_inputs.py
+    ├── config
+    ├── ingestion
+    │   ├── ingest.py
+    │   ├── normalize.py
+    │   ├── normalize_lite.py
+    │   └── pii.py
+    ├── embeddings
+    │   └── embeddings.py
+    ├── vectorstore
+    │   ├── qdrant_store.py
+    │   └── index_tickets.py
+    └── retrieval
+        ├── search_tickets.py
+        ├── pipeline.py
+        ├── area_inference.py
+        ├── subarea_inference.py
+        ├── pair_inference.py
+        ├── confidence.py
+        └── reranker.py
 
 ---
 
@@ -268,17 +258,18 @@ No external ticket data transfer
 
 # Future Enhancements
 
-Cross‑encoder reranker
 
-API clustering
+Explainability layer for why tickets matched
 
 Langfuse observability
 
-FastAPI endpoint
+Evaluation dataset and benchmark metrics
 
-Web / chatbot UI
+LangChain integration
 
-Evaluation metrics
+Local translation support
+
+Hybrid retrieval (vector + keyword search)
 
 ---
 
@@ -495,6 +486,21 @@ Final Similar Tickets
 ```
 
 ---
+
+
+# Run Streamlit App
+
+Install Streamlit if not already installed:
+
+```
+poetry add streamlit
+```
+
+Run the application:
+
+```
+poetry run streamlit run src/ticket_similarity/app/streamlit_app.py
+```
 
 # Security & Data Handling
 
