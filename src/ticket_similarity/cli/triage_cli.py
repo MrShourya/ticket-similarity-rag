@@ -4,6 +4,8 @@ from ticket_similarity.retrieval.pipeline import (
     run_final_similarity_search,
     print_prediction_block,
     print_similar_tickets,
+    print_ranked_results,
+    print_rank_changes,
 )
 
 
@@ -48,6 +50,39 @@ def choose_pair(candidate_pairs: list[dict]) -> tuple[str, str | None]:
 
         print("Invalid selection. Please try again.")
 
+def print_final_ticket_details(results: list[dict]) -> None:
+    print("\n" + "=" * 80)
+    print("FINAL TICKET DETAILS (RERANKED RESULTS)")
+    print("=" * 80)
+
+    if not results:
+        print("No final tickets found.")
+        return
+
+    for i, r in enumerate(results, start=1):
+        print(f"\n[{i}] Ticket ID: {r['ticket_id']}")
+        print(f"    Similarity Score : {r['similarity_score']:.4f}")
+
+        if "rerank_score" in r:
+            print(f"    Rerank Score     : {r['rerank_score']:.4f}")
+
+        print(f"    Area             : {r['area']}")
+        print(f"    Sub Area         : {r['sub_area']}")
+        print(f"    State            : {r['state']}")
+        print(f"    Operation        : {r['operation_name']}")
+        print(f"    API              : {r['api']}")
+
+        print("\n    Base Text")
+        print("    " + "-" * 68)
+        for line in str(r.get("base_text", "")).splitlines():
+            print(f"    {line}")
+
+        enrichment_text = str(r.get("enrichment_text", "") or "").strip()
+        if enrichment_text:
+            print("\n    Enrichment Text")
+            print("    " + "-" * 68)
+            for line in enrichment_text[:1200].splitlines():
+                print(f"    {line}")
 
 def main():
     print("\n" + "=" * 80)
@@ -98,14 +133,37 @@ def main():
     print(f"Area     : {selected_area}")
     print(f"Sub Area : {selected_sub_area}")
 
-    final_results = run_final_similarity_search(
-        query=inference_output["query"],
-        selected_area=selected_area,
-        selected_sub_area=selected_sub_area,
-        top_k=5,
+    comparison = run_final_similarity_search(
+    query=inference_output["query"],
+    selected_area=selected_area,
+    selected_sub_area=selected_sub_area,
+    top_k=5,
+    rerank_top_n=15,
+    use_reranker=True,
+    return_comparison=True,
+)
+
+    before_results = comparison["before_rerank"]
+    after_results = comparison["after_rerank"]
+
+    print("\nRunning cross-encoder reranking on top candidates...")
+
+    print_ranked_results(
+        before_results,
+        title="SIMILAR TICKETS (VECTOR SEARCH ONLY)"
     )
 
-    print_similar_tickets(final_results, title="FINAL FILTERED SIMILAR TICKETS")
+    print_ranked_results(
+        after_results,
+        title="SIMILAR TICKETS (AFTER RERANKING)"
+    )
+
+    print_rank_changes(
+        before_results,
+        after_results
+    )
+
+    print_final_ticket_details(after_results)
 
 
 if __name__ == "__main__":
