@@ -2,7 +2,10 @@ from qdrant_client.models import Filter, FieldCondition, MatchValue
 
 from ticket_similarity.embeddings.embeddings import EmbeddingService
 from ticket_similarity.vectorstore.qdrant_store import COLLECTION_NAME, get_qdrant_client
-
+from ticket_similarity.observability.langfuse_support import (
+    observe,
+    update_current_observation,
+)
 
 def build_filter(area: str | None = None, sub_area: str | None = None):
     conditions = []
@@ -18,7 +21,7 @@ def build_filter(area: str | None = None, sub_area: str | None = None):
 
     return Filter(must=conditions)
 
-
+@observe(name="search_similar_tickets")
 def search_similar_tickets(
     query: str,
     area: str | None = None,
@@ -58,7 +61,21 @@ def search_similar_tickets(
                 "has_enrichment": payload.get("has_enrichment"),
             }
         )
-
+    update_current_observation(
+        input={
+            "query": query,
+            "area": area,
+            "sub_area": sub_area,
+            "limit": limit,
+        },
+        output={
+            "result_count": len(output),
+            "top_ticket_ids": [r["ticket_id"] for r in output[:5]],
+        },
+        metadata={
+            "search_type": "vector_search",
+        },
+    )
     return output
 
 

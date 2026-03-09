@@ -516,3 +516,58 @@ Security measures:
 - local vector database
 
 ---
+
+
+#  Observability Architecture
+
+The system includes a local observability stack for monitoring and debugging the retrieval pipeline.
+
+Components
+
+Langfuse Web — trace visualization UI
+
+Langfuse Worker — background trace/event processing
+
+ClickHouse — trace analytics storage
+
+Postgres — metadata storage
+
+Redis — internal queue/cache
+
+MinIO — local object storage for Langfuse events/media
+
+
+- Enable tracing
+
+```
+LANGFUSE_ENABLED=true
+```
+
+
+- Create env variable, based on the langfuse project
+
+```
+LANGFUSE_ENABLED=true
+```
+
+- You can view langfuse on 
+
+```
+http://localhost:3000
+```
+
+- You can view quadrant on 
+
+```
+http://localhost:6333/dashboard#/collections
+```
+
+
+- You can view minio on 
+
+```
+http://localhost:9091/login
+```
+
+
+---

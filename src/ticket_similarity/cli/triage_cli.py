@@ -1,12 +1,11 @@
 from ticket_similarity.cli.demo_inputs import DEMO_INPUTS
 from ticket_similarity.retrieval.pipeline import (
-    run_global_inference,
-    run_final_similarity_search,
+    run_ticket_triage_workflow,
     print_prediction_block,
-    print_similar_tickets,
     print_ranked_results,
     print_rank_changes,
 )
+from ticket_similarity.observability.langfuse_support import flush_langfuse
 
 
 def prompt_optional(label: str) -> str | None:
@@ -50,6 +49,7 @@ def choose_pair(candidate_pairs: list[dict]) -> tuple[str, str | None]:
 
         print("Invalid selection. Please try again.")
 
+
 def print_final_ticket_details(results: list[dict]) -> None:
     print("\n" + "=" * 80)
     print("FINAL TICKET DETAILS (RERANKED RESULTS)")
@@ -84,6 +84,7 @@ def print_final_ticket_details(results: list[dict]) -> None:
             for line in enrichment_text[:1200].splitlines():
                 print(f"    {line}")
 
+
 def main():
     print("\n" + "=" * 80)
     print("TICKET SIMILARITY TRIAGE CLI")
@@ -109,20 +110,30 @@ def main():
         input_area = prompt_optional("Enter existing Area if available (optional): ")
         input_sub_area = prompt_optional("Enter existing Sub Area if available (optional): ")
 
-    inference_output = run_global_inference(
+    # First run global inference only so user can choose pair
+    preview_workflow = run_ticket_triage_workflow(
         short_description=short_description,
         description=description,
         input_area=input_area,
         input_sub_area=input_sub_area,
+        selected_area=None,
+        selected_sub_area=None,
         candidate_k=20,
         top_pairs=3,
+        top_k=5,
+        rerank_top_n=15,
+        use_reranker=True,
+        return_comparison=True,
     )
+
+    inference_output = preview_workflow["inference_output"]
 
     print_prediction_block(inference_output)
 
     candidate_pairs = inference_output["candidate_pairs"]
     if not candidate_pairs:
         print("\nNo candidate pairs found from global similarity search.")
+        flush_langfuse()
         return
 
     selected_area, selected_sub_area = choose_pair(candidate_pairs)
@@ -133,16 +144,23 @@ def main():
     print(f"Area     : {selected_area}")
     print(f"Sub Area : {selected_sub_area}")
 
-    comparison = run_final_similarity_search(
-    query=inference_output["query"],
-    selected_area=selected_area,
-    selected_sub_area=selected_sub_area,
-    top_k=5,
-    rerank_top_n=15,
-    use_reranker=True,
-    return_comparison=True,
-)
+    # Final user-confirmed run
+    workflow_output = run_ticket_triage_workflow(
+        short_description=short_description,
+        description=description,
+        input_area=input_area,
+        input_sub_area=input_sub_area,
+        selected_area=selected_area,
+        selected_sub_area=selected_sub_area,
+        candidate_k=20,
+        top_pairs=3,
+        top_k=5,
+        rerank_top_n=15,
+        use_reranker=True,
+        return_comparison=True,
+    )
 
+    comparison = workflow_output["comparison"]
     before_results = comparison["before_rerank"]
     after_results = comparison["after_rerank"]
 
@@ -164,6 +182,8 @@ def main():
     )
 
     print_final_ticket_details(after_results)
+
+    flush_langfuse()
 
 
 if __name__ == "__main__":

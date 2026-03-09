@@ -1,9 +1,17 @@
+import uuid
+
 from ticket_similarity.retrieval.search_tickets import search_similar_tickets
 from ticket_similarity.retrieval.area_inference import infer_area
 from ticket_similarity.retrieval.subarea_inference import infer_sub_area
 from ticket_similarity.retrieval.pair_inference import infer_top_area_subarea_pairs
 from ticket_similarity.retrieval.confidence import apply_input_alignment_boost
 from ticket_similarity.retrieval.reranker import CrossEncoderReranker
+from ticket_similarity.observability.langfuse_support import (
+    observe,
+    update_current_trace,
+    update_current_observation,
+    flush_langfuse,
+)
 
 
 def build_query(short_description: str, description: str) -> str:
@@ -16,6 +24,7 @@ Description:
 """.strip()
 
 
+@observe(name="run_global_inference")
 def run_global_inference(
     short_description: str,
     description: str,
@@ -43,7 +52,7 @@ def run_global_inference(
         input_sub_area=input_sub_area,
     )
 
-    return {
+    result = {
         "query": query,
         "predicted_area": area_prediction,
         "predicted_sub_area": sub_area_prediction,
@@ -51,7 +60,30 @@ def run_global_inference(
         "initial_similar_tickets": initial_results,
     }
 
+    update_current_observation(
+        input={
+            "short_description": short_description,
+            "description_preview": description[:300],
+            "input_area": input_area,
+            "input_sub_area": input_sub_area,
+        },
+        output={
+            "predicted_area": area_prediction["label"],
+            "predicted_sub_area": sub_area_prediction["label"],
+            "candidate_pair_count": len(candidate_pairs),
+            "top_candidate_pairs": candidate_pairs[:3],
+        },
+        metadata={
+            "candidate_k": candidate_k,
+            "top_pairs": top_pairs,
+            "initial_result_count": len(initial_results),
+        },
+    )
 
+    return result
+
+
+@observe(name="run_final_similarity_search")
 def run_final_similarity_search(
     query: str,
     selected_area: str,
@@ -61,13 +93,6 @@ def run_final_similarity_search(
     use_reranker: bool = True,
     return_comparison: bool = False,
 ):
-    """
-    Final search after user confirms the area/sub_area pair.
-
-    Flow:
-    1. Filtered vector search
-    2. Optional rerank of top-N filtered candidates
-    """
     filtered_results = search_similar_tickets(
         query=query,
         area=selected_area,
@@ -78,63 +103,143 @@ def run_final_similarity_search(
     vector_only_top_k = filtered_results[:top_k]
 
     if not use_reranker or not filtered_results:
-        if return_comparison:
-            return {
-                "before_rerank": vector_only_top_k,
-                "after_rerank": vector_only_top_k,
-            }
-        return vector_only_top_k
+        result = {
+            "before_rerank": vector_only_top_k,
+            "after_rerank": vector_only_top_k,
+        }
+
+        update_current_observation(
+            input={
+                "selected_area": selected_area,
+                "selected_sub_area": selected_sub_area,
+                "top_k": top_k,
+                "rerank_top_n": rerank_top_n,
+                "use_reranker": use_reranker,
+            },
+            output={
+                "before_count": len(vector_only_top_k),
+                "after_count": len(vector_only_top_k),
+                "final_ticket_ids": [r["ticket_id"] for r in vector_only_top_k],
+            },
+            metadata={"stage": "final_similarity_search"},
+        )
+
+        return result if return_comparison else vector_only_top_k
 
     reranker = CrossEncoderReranker()
     reranked = reranker.rerank(query=query, candidates=filtered_results, top_k=top_k)
 
-    if return_comparison:
-        return {
-            "before_rerank": vector_only_top_k,
-            "after_rerank": reranked,
+    result = {
+        "before_rerank": vector_only_top_k,
+        "after_rerank": reranked,
+    }
+
+    update_current_observation(
+        input={
+            "selected_area": selected_area,
+            "selected_sub_area": selected_sub_area,
+            "top_k": top_k,
+            "rerank_top_n": rerank_top_n,
+            "use_reranker": use_reranker,
+        },
+        output={
+            "before_count": len(vector_only_top_k),
+            "after_count": len(reranked),
+            "final_ticket_ids": [r["ticket_id"] for r in reranked],
+        },
+        metadata={"stage": "final_similarity_search"},
+    )
+
+    return result if return_comparison else reranked
+
+
+@observe(name="ticket_triage_request")
+def run_ticket_triage_workflow(
+    short_description: str,
+    description: str,
+    input_area: str | None = None,
+    input_sub_area: str | None = None,
+    selected_area: str | None = None,
+    selected_sub_area: str | None = None,
+    candidate_k: int = 20,
+    top_pairs: int = 3,
+    top_k: int = 5,
+    rerank_top_n: int = 15,
+    use_reranker: bool = True,
+    return_comparison: bool = True,
+):
+    """
+    Top-level orchestration function for a full user triage request.
+    This is the root Langfuse trace.
+    """
+    session_id = str(uuid.uuid4())
+
+    update_current_trace(
+        name="ticket_triage_request",
+        session_id=session_id,
+        tags=["ticket-similarity", "triage"],
+        input={
+            "short_description": short_description,
+            "description_preview": description[:300],
+            "input_area": input_area,
+            "input_sub_area": input_sub_area,
+        },
+        metadata={
+            "candidate_k": candidate_k,
+            "top_pairs": top_pairs,
+            "top_k": top_k,
+            "rerank_top_n": rerank_top_n,
+            "use_reranker": use_reranker,
+        },
+    )
+
+    inference_output = run_global_inference(
+        short_description=short_description,
+        description=description,
+        input_area=input_area,
+        input_sub_area=input_sub_area,
+        candidate_k=candidate_k,
+        top_pairs=top_pairs,
+    )
+
+    chosen_area = selected_area
+    chosen_sub_area = selected_sub_area
+
+    if not chosen_area:
+        candidate_pairs = inference_output.get("candidate_pairs", [])
+        if candidate_pairs:
+            chosen_area = candidate_pairs[0]["area"]
+            chosen_sub_area = candidate_pairs[0]["sub_area"] or None
+
+    comparison = run_final_similarity_search(
+        query=inference_output["query"],
+        selected_area=chosen_area,
+        selected_sub_area=chosen_sub_area,
+        top_k=top_k,
+        rerank_top_n=rerank_top_n,
+        use_reranker=use_reranker,
+        return_comparison=return_comparison,
+    )
+
+    update_current_trace(
+        output={
+            "predicted_area": inference_output["predicted_area"]["label"],
+            "predicted_sub_area": inference_output["predicted_sub_area"]["label"],
+            "selected_area": chosen_area,
+            "selected_sub_area": chosen_sub_area,
+            "final_ticket_ids": [
+                r["ticket_id"] for r in comparison["after_rerank"][:top_k]
+            ] if return_comparison else [r["ticket_id"] for r in comparison[:top_k]],
         }
+    )
 
-    return reranked
+    return {
+        "inference_output": inference_output,
+        "comparison": comparison,
+        "selected_area": chosen_area,
+        "selected_sub_area": chosen_sub_area,
+    }
 
-
-def print_ranked_results(results: list[dict], title: str):
-    print("\n" + "=" * 80)
-    print(title)
-    print("=" * 80)
-
-    if not results:
-        print("No results found.")
-        return
-
-    for i, r in enumerate(results, start=1):
-        line = (
-            f"[{i}] Ticket ID={r['ticket_id']} | "
-            f"similarity={r.get('similarity_score', r.get('score', 0.0)):.4f}"
-        )
-
-        if "rerank_score" in r:
-            line += f" | rerank={r['rerank_score']:.4f}"
-
-        line += f" | area={r['area']} | sub_area={r['sub_area']}"
-        print(line)
-
-
-def print_rank_changes(before: list[dict], after: list[dict]):
-    print("\n" + "=" * 80)
-    print("RANK MOVEMENT (BEFORE → AFTER)")
-    print("=" * 80)
-
-    before_map = {r["ticket_id"]: idx + 1 for idx, r in enumerate(before)}
-    after_map = {r["ticket_id"]: idx + 1 for idx, r in enumerate(after)}
-
-    common_ids = [ticket_id for ticket_id in before_map if ticket_id in after_map]
-
-    if not common_ids:
-        print("No overlapping ticket IDs to compare.")
-        return
-
-    for ticket_id in common_ids:
-        print(f"{ticket_id}: {before_map[ticket_id]} -> {after_map[ticket_id]}")
 
 def print_prediction_block(output: dict):
     print("\n" + "=" * 80)
@@ -191,43 +296,78 @@ def print_similar_tickets(results: list[dict], title: str = "SIMILAR TICKETS"):
         print(f"    Base Text        : {str(r['base_text'])[:300]}")
 
 
-if __name__ == "__main__":
-    short_description = "Payment Issue"
-    description = "My credit card ending 1234 was debited on 20Feb2026 for 1,333.62. But bills not cleared in application."
+def print_ranked_results(results: list[dict], title: str):
+    print("\n" + "=" * 80)
+    print(title)
+    print("=" * 80)
 
-    output = run_global_inference(
-        short_description=short_description,
-        description=description,
+    if not results:
+        print("No results found.")
+        return
+
+    for i, r in enumerate(results, start=1):
+        line = (
+            f"[{i}] Ticket ID={r['ticket_id']} | "
+            f"similarity={r.get('similarity_score', r.get('score', 0.0)):.4f}"
+        )
+
+        if "rerank_score" in r:
+            line += f" | rerank={r['rerank_score']:.4f}"
+
+        line += f" | area={r['area']} | sub_area={r['sub_area']}"
+        print(line)
+
+
+def print_rank_changes(before: list[dict], after: list[dict]):
+    print("\n" + "=" * 80)
+    print("RANK MOVEMENT (BEFORE → AFTER)")
+    print("=" * 80)
+
+    before_map = {r["ticket_id"]: idx + 1 for idx, r in enumerate(before)}
+    after_map = {r["ticket_id"]: idx + 1 for idx, r in enumerate(after)}
+
+    common_ids = [ticket_id for ticket_id in before_map if ticket_id in after_map]
+
+    if not common_ids:
+        print("No overlapping ticket IDs to compare.")
+        return
+
+    for ticket_id in common_ids:
+        print(f"{ticket_id}: {before_map[ticket_id]} -> {after_map[ticket_id]}")
+
+
+if __name__ == "__main__":
+    workflow_output = run_ticket_triage_workflow(
+        short_description="Payment Issue",
+        description="My credit card ending 1234 was debited on 20Feb2026 for 1,333.62. But bills not cleared in application.",
         input_area="ADDC",
         input_sub_area="Water and Electricity Bill Payment",
         candidate_k=20,
         top_pairs=3,
+        top_k=5,
+        rerank_top_n=15,
+        use_reranker=True,
+        return_comparison=True,
     )
 
-    print_prediction_block(output)
+    inference_output = workflow_output["inference_output"]
+    comparison = workflow_output["comparison"]
 
-    if output["candidate_pairs"]:
-        comparison = run_final_similarity_search(
-            query=output["query"],
-            selected_area=output["candidate_pairs"][0]["area"],
-            selected_sub_area=output["candidate_pairs"][0]["sub_area"],
-            top_k=5,
-            rerank_top_n=15,
-            use_reranker=True,
-            return_comparison=True,
-        )
+    print_prediction_block(inference_output)
 
-        print_ranked_results(
-            comparison["before_rerank"],
-            title="FINAL FILTERED RESULTS (BEFORE RERANK)",
-        )
+    print_ranked_results(
+        comparison["before_rerank"],
+        title="FINAL FILTERED RESULTS (BEFORE RERANK)",
+    )
 
-        print_ranked_results(
-            comparison["after_rerank"],
-            title="FINAL FILTERED RESULTS (AFTER RERANK)",
-        )
+    print_ranked_results(
+        comparison["after_rerank"],
+        title="FINAL FILTERED RESULTS (AFTER RERANK)",
+    )
 
-        print_rank_changes(
-            comparison["before_rerank"],
-            comparison["after_rerank"],
-        )
+    print_rank_changes(
+        comparison["before_rerank"],
+        comparison["after_rerank"],
+    )
+
+    flush_langfuse()

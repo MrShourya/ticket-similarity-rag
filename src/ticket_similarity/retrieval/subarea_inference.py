@@ -1,6 +1,10 @@
 from collections import defaultdict
+from ticket_similarity.observability.langfuse_support import (
+    observe,
+    update_current_observation,
+)
 
-
+@observe(name="infer_sub_area")
 def infer_sub_area(results: list[dict], predicted_area: str | None) -> dict:
     """
     Infer the most likely Sub Area, but only within the predicted Area.
@@ -48,9 +52,26 @@ def infer_sub_area(results: list[dict], predicted_area: str | None) -> dict:
     candidates.sort(key=lambda x: x["score"], reverse=True)
 
     best = candidates[0]
+    if(best):
+        result = {
+            "label": best["label"],
+            "confidence": best["confidence"],
+            "candidates": candidates,
+        }
+    else:
+        result = {
+            "label": None,
+            "confidence": 0.0,
+            "candidates": [],
+        }
 
-    return {
-        "label": best["label"],
-        "confidence": best["confidence"],
-        "candidates": candidates,
-    }
+    update_current_observation(
+        input={
+            "result_count": len(results),
+            "predicted_area": predicted_area,
+        },
+        output=result,
+        metadata={"stage": "subarea_inference"},
+    )
+
+    return result

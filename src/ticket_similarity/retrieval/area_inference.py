@@ -1,6 +1,10 @@
 from collections import defaultdict
+from ticket_similarity.observability.langfuse_support import (
+    observe,
+    update_current_observation,
+)
 
-
+@observe(name="infer_area")
 def infer_area(results: list[dict]) -> dict:
     """
     Infer the most likely Area from retrieved tickets using weighted voting.
@@ -40,8 +44,23 @@ def infer_area(results: list[dict]) -> dict:
 
     best = candidates[0]
 
-    return {
-        "label": best["label"],
-        "confidence": best["confidence"],
-        "candidates": candidates,
-    }
+    if(best):
+        result = {
+            "label": best["label"],
+            "confidence": best["confidence"],
+            "candidates": candidates,
+        }
+    else:
+        result = {
+            "label": None,
+            "confidence": 0.0,
+            "candidates": [],
+        }
+
+    update_current_observation(
+        input={"result_count": len(results)},
+        output=result,
+        metadata={"stage": "area_inference"},
+    )
+
+    return result

@@ -220,7 +220,7 @@ def main():
     with inference_col2:
         top_pairs = st.slider("Number of Area / Sub Area Pairs", 1, 5, 3, 1)
 
-    run_btn = st.button("Fetch Similar Tickets", type="primary", use_container_width=True)
+    run_btn = st.button("Fetch Similar Tickets (Without considering area/subarea)", type="primary", use_container_width=True)
 
     if run_btn:
         if not short_description.strip() or not description.strip():
@@ -277,7 +277,7 @@ def main():
         with c3:
             use_reranker = st.checkbox("Use Cross-Encoder Reranker", value=True)
 
-        final_btn = st.button("Run Final Similarity Search", use_container_width=True)
+        final_btn = st.button("Run Final Similarity Search",type="primary", use_container_width=True)
 
         if final_btn:
             with st.spinner("Running filtered similarity search..."):

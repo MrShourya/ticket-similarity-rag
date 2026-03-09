@@ -1,9 +1,14 @@
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
 
+from ticket_similarity.observability.langfuse_support import (
+    observe,
+    update_current_observation,
+)
 
 RERANKER_MODEL = "BAAI/bge-reranker-base"
-
+from transformers import logging
+logging.set_verbosity_error()
 
 class CrossEncoderReranker:
     def __init__(self, model_name: str = RERANKER_MODEL):
@@ -11,6 +16,7 @@ class CrossEncoderReranker:
         self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
         self.model.eval()
 
+    @observe(name="cross_encoder_rerank")
     def rerank(self, query: str, candidates: list[dict], top_k: int = 5) -> list[dict]:
         """
         Rerank candidate tickets using a cross-encoder.
@@ -18,6 +24,15 @@ class CrossEncoderReranker:
         Returns candidates sorted by rerank_score descending.
         """
         if not candidates:
+            update_current_observation(
+                input={
+                    "query": query[:500],
+                    "candidate_count": 0,
+                    "top_k": top_k,
+                },
+                output={"reranked_ticket_ids": []},
+                metadata={"model": RERANKER_MODEL},
+            )
             return []
 
         pair_texts = []
@@ -44,7 +59,24 @@ class CrossEncoderReranker:
             reranked.append(updated)
 
         reranked.sort(key=lambda x: x["rerank_score"], reverse=True)
-        return reranked[:top_k]
+
+        final_results = reranked[:top_k]
+
+        update_current_observation(
+            input={
+                "query": query[:500],
+                "candidate_count": len(candidates),
+                "top_k": top_k,
+            },
+            output={
+                "reranked_ticket_ids": [r["ticket_id"] for r in final_results],
+            },
+            metadata={
+                "model": RERANKER_MODEL,
+            },
+        )
+
+        return final_results
 
 
 def build_reranker_candidate_text(candidate: dict) -> str:
