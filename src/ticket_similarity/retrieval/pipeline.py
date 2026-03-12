@@ -12,7 +12,12 @@ from ticket_similarity.observability.langfuse_support import (
     update_current_observation,
     flush_langfuse,
 )
+import os
+from transformers import logging as hf_logging
 
+os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+hf_logging.set_verbosity_error()
+# hf_logging.disable_progress_bar()
 
 def build_query(short_description: str, description: str) -> str:
     return f"""
